@@ -85,11 +85,12 @@
         gapi.auth2.getAuthInstance().signOut();
       }
 
+
       /**
        * Append a pre element to the body containing the given message
        * as its text node. Used to display the results of the API call.
        *
-       * @param {string} message Text to be placed in pre element.
+       * @param {string} message Text to be placed in pre element. 
        */
       function appendPre(message) {
         var pre = document.getElementById('content');
@@ -97,26 +98,56 @@
         pre.appendChild(textContent);
       }
 
-      //parses html and shows images 
+
+      /**
+      ** parses html and shows images with links
+      **/
       function showImages(html) {
         //appendPre("HTML: \n" + html + "\n\n");
         var lines = html.split('\n');
-        for(var i = 0;i < lines.length;i++){
-            if (lines[i].includes('img') && lines[i].includes('src=')) {
-              var thisLine = lines[i];
-              console.log("contains img src in line: " + thisLine);
+        var link = ""; //stores a <a href=""> tag for the images to display
 
-              var src=""; //src url of image
-              var htmlElems = thisLine.split("<");
+        for(var i = 0; i < lines.length; i++){ //for each line in email
+          var thisLine = lines[i];
+
+          //keep track of most last encountered link (to connect to found images)
+          if (thisLine.includes('a href')) {
+            var href=""; //href url of this link
+            var htmlElems = thisLine.split("<");
+            //check each thing inside "<...>"
+            for (var a = 0; a < htmlElems.length; a++) {
+              //find the <...> containing img... src=""
+              var elem = htmlElems[a];
+              if (elem.includes('a ') && elem.includes('href')) {
+                //split this img elem by ' ' empty space to find the href tag                  
+                var splitString = elem.split(' '); 
+                for (var m = 0; m < splitString.length; m++) {
+                  var url = splitString[m];
+                  if (url.includes('href=\"http')) {
+                    idx = url.indexOf('href=\"http');
+                    url = url.substring(idx, url.length-1);
+                    console.log("url should now only contain href=\"http...: " +  url);
+                    urlArr = url.split('\"');
+                    href = urlArr[1];
+                    break;
+                  }
+                }
+              }
+            }
+            link = href; //will contain the closest <a href> link before an image is found. 
+          }
+          if (thisLine.includes('img') && thisLine.includes('src=')) {
+            console.log("contains img src in line: " + thisLine);
+            console.log("LINK for this image: " + link);
+            var src=""; //src url of image
+            var htmlElems = thisLine.split("<");
               //check each thing inside "<...>"
               for (var z = 0; z < htmlElems.length; z++) {
                 //find the <...> containing img... src=""
                 var elem = htmlElems[z];
-                if (elem.includes('img') && elem.includes('src')) {
+                if (elem.includes('img ') && elem.includes('src')) {
 
-                  //split this img elem by " " to find the src url
-                  //find the src link
-                  
+                  //split this img elem by ' ' empty space to find the src url                  
                   var splitString = elem.split(' '); 
                   for (var j = 0; j < splitString.length; j++) {
                     var url = splitString[j];
@@ -133,55 +164,89 @@
                   }
                   if (src !== "") {
                     console.log("img src: " + src);
-                    //create image element to display
+                    //create LINKED image element to display if height>100px
+                    var div = document.createElement("div");
+                    var a = document.createElement('a');
+                    a.href = link;
                     var scraped_image = document.createElement("IMG");
                     scraped_image.src =  src; 
+                    scraped_image.onload = function() {
+                      console.log(this.height);
+                      if (this.height < 100 || this.width < 250) {
+                        this.style.display = "none";
+                      } 
+                    }
+                    a.appendChild(scraped_image);
+                    div.appendChild(a);
+                    document.body.appendChild(div);
                     var pre = document.getElementById('content');
-                    pre.appendChild(scraped_image);
+                    pre.appendChild(div);
+                    //reset src
                     src="";
                   }
                 }
               }
-
-              
             }
         }
       }
 
       function showMessage(r) {
-        //appendPre("Message: " + r.result.payload.mimeType + "\n");
-        var parts = r.result.payload.parts;
-        if (parts) {
-          //parts[0] = rich text
-          //parts[1] = actual html with tags, img src, etc.
-          if (parts[1]) {
-            var html = Base64.decode(parts[1].body.data);
-            //find the sender email
-            var sender = "";
-            var subject = "";
-            var headers = r.result.payload.headers;
-            for (i = 0; i < headers.length; i++) {
-              if (headers[i].name === "From") {
-                sender = headers[i].value;
-                if (sender.includes('<')) {
-                  senderArr = sender.split('<');
-                  sender = senderArr[0];
-                }
-              } else if (headers[i].name === "Subject") {
-                subject = headers[i].value;
+        //appendPre("Message: " + r.result.payload.mimeType + "\n"); 
+        var parts = r.result.payload.parts; 
+        console.log("parts: " + parts);
+        if (parts) { 
+          // parts[0] = rich text;
+          // parts[1] = actual html with tags, img src, etc. 
+          if (parts[1]) { 
+            var html = Base64.decode(parts[1].body.data); 
+            //find the sender email 
+            var sender = ""; 
+            var subject = ""; 
+            var headers = r.result.payload.headers; 
+            for (i = 0; i < headers.length; i++) { 
+              if (headers[i].name === "From") { 
+                sender = headers[i].value; 
+                if (sender.includes('<')) { 
+                  senderArr = sender.split('<'); 
+                  sender = senderArr[0]; 
+                } 
+              } else if (headers[i].name === "Subject") { 
+                subject = headers[i].value; 
               }
             }
             appendPre("\n SENDER: " + sender);
             appendPre("\n SUBJECT: " + subject);
             showImages(html);
+          } 
+        } else {
+          //this is a plain text/plain email. there is no "rich text" portion. & wont have "parts" section
+          var body = r.result.payload.body; 
+          console.log("body: " + body);
+          var html = Base64.decode(body.data); 
+          //find the sender email 
+          var sender = ""; 
+          var subject = ""; 
+          var headers = r.result.payload.headers; 
+          for (i = 0; i < headers.length; i++) { 
+            if (headers[i].name === "From") { 
+              sender = headers[i].value; 
+              if (sender.includes('<')) { 
+                senderArr = sender.split('<'); 
+                sender = senderArr[0]; 
+              } 
+            } else if (headers[i].name === "Subject") { 
+              subject = headers[i].value; 
+            }
           }
+          appendPre("\n SENDER: " + sender);
+          appendPre("\n SUBJECT: " + subject);
+          showImages(html);
         }
         
       }
 
       /**
-       * Print all Labels in the authorized user's inbox. If no labels
-       * are found an appropriate message is printed.
+       * Print all messages (& their images) in inbox
        */
       function listLabels() {
         var messages;
@@ -191,6 +256,7 @@
           'format': 'full'
         }).then(function(response) {
           messages = response.result.messages;
+          appendPre("# messages: " + messages.length);
           appendPre('Messages:');
 
           if (messages && messages.length > 0) {
